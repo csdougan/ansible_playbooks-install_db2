@@ -1,0 +1,209 @@
+---
+- name: Install DB2
+  ##hosts: local
+  ##hosts: localhost
+  hosts: all 
+  connection: local
+  gather_facts: true
+  become: true
+  vars:
+    appcode: mpsl
+    envid: x 
+    schemaid: l
+    envnum: 1
+    envcode: "{{ envid }}{{ envnum }}"
+    schemacode: "{{ schemaid }}{{ envnum }}"
+    default_user_pwd: password123
+    newdisk: false
+    user_list:
+      - { 'name' : "{{ appcode }}{{ envcode }}i", 'uid' : '300', 'group' : 'db2iadm', 'home' : "/db2home/{{ appcode }}{{ envcode }}i" }
+      - { 'name' : "{{ appcode }}{{ envcode }}a", 'uid' : '301', 'group' : 'db2admg', 'home' : "/db2home/{{ appcode }}{{ envcode }}a" }
+      - { 'name' : "{{ appcode }}{{ envcode }}f", 'uid' : '302', 'group' : 'db2feng', 'home' : "/db2home/{{ appcode }}{{ envcode }}f" }
+      - { 'name' : "{{ appcode }}{{ schemaid }}ds{{ envnum }}", 'uid' : '303', 'group' : '{{ appcode }}{{ schemacode }}rw', 'home' : "/db2home/{{ appcode }}{{ schemaid }}ds{{ envnum }}" }
+
+    group_list:
+      - { 'name' : 'db2iadm',                      'gid' : '300' }
+      - { 'name' : 'db2ctrl',                      'gid' : '307' }
+      - { 'name' : 'db2maint',                     'gid' : '306' }
+      - { 'name' : 'db2mon',                       'gid' : '305' }
+      - { 'name' : 'db2admg',                      'gid' : '301' }
+      - { 'name' : 'db2feng',                      'gid' : '302' }
+      - { 'name' : "{{ appcode }}{{ schemacode }}rw", 'gid' : '303' }
+      - { 'name' : "{{ appcode }}{{ schemacode }}ro", 'gid' : '304' }
+
+    filesystem_list:
+      - { 'name' : '/opt/IBM',                                       'owner' : 'root',                         'group' : 'root',                         'perms' : '0777' }
+      - { 'name' : '/opt/IBM/Installation',                          'owner' : 'root',                         'group' : 'root',                         'perms' : '0777' }
+      - { 'name' : '/opt/IBM/Installation/tmp',                          'owner' : 'root',                         'group' : 'root',                         'perms' : '0777' }
+      - { 'name' : '/opt/IBM/db2',                                   'owner' : "{{ appcode }}{{ envcode }}i",  'group' : 'db2iadm',                         'perms' : '0755' }
+      - { 'name' : '/db2data',                                       'owner' : "{{ appcode }}{{ envcode }}i",  'group' : 'db2iadm',                      'perms' : '0755' }
+      - { 'name' : '/db2data/db2fs1p0',                               'owner' : "{{ appcode }}{{ envcode }}i",  'group' : 'db2iadm',                      'perms' : '0755' }
+      - { 'name' : "/db2data/db2fs1p0/{{ appcode }}{{ envcode }}i",   'owner' : "{{ appcode }}{{ envcode }}i",  'group' : 'db2iadm',                      'perms' : '0755' }
+      - { 'name' : '/db2data/db2logsp0',                             'owner' : "{{ appcode }}{{ envcode }}i",  'group' : 'db2iadm',                      'perms' : '0755' }
+      - { 'name' : "/db2data/db2logsp0/{{ appcode }}{{ envcode }}i", 'owner' : "{{ appcode }}{{ envcode }}i",  'group' : 'db2iadm',                      'perms' : '0755' }
+      - { 'name' : '/db2data/db2tmp1p0',                             'owner' : "{{ appcode }}{{ envcode }}i",  'group' : 'db2iadm',                      'perms' : '0755' }
+      - { 'name' : "/db2data/db2tmp1p0/{{ appcode }}{{ envcode }}i", 'owner' : "{{ appcode }}{{ envcode }}i",  'group' : 'db2iadm',                      'perms' : '0755' }
+      - { 'name' : "/db2home/{{ appcode }}{{ envcode }}a",           'owner' : "{{ appcode }}{{ envcode }}a",  'group' : 'db2admg',                      'perms' : '0755' }
+      - { 'name' : "/db2home/{{ appcode }}{{ envcode }}f",           'owner' : "{{ appcode }}{{ envcode }}f",  'group' : 'db2feng',                      'perms' : '0755' }
+      - { 'name' : "/db2home/{{ appcode }}{{ envcode }}i",           'owner' : "{{ appcode }}{{ envcode }}i",  'group' : 'db2iadm',                      'perms' : '0755' }
+      - { 'name' : "/db2home/{{ appcode }}{{ schemaid }}ds{{ envnum }}",          'owner' : "{{ appcode }}{{ schemaid }}ds{{ envnum }}", 'group' : "{{ appcode }}{{ schemacode }}rw", 'perms' : '0755' }
+      - { 'name' : '/db2data/hk',                                    'owner' : "{{ appcode }}{{ envcode }}i",  'group' : 'db2iadm',                      'perms' : '0755' }
+      - { 'name' : '/db2data/logs',                                  'owner' : "{{ appcode }}{{ envcode }}i",  'group' : 'db2iadm',                      'perms' : '0755' }
+
+    logical_volumes:
+    - { name: 'datalv',     size: '190G',  vg: 'datavg', mount: '/db2data',                 fstype: 'xfs', mount_after_install: false }
+
+
+  tasks:
+  - name: Install Packages
+    yum:
+      package: "{{ item }}"
+      state: installed
+    with_items:
+     - wget
+     - pam
+     - pam.i686
+     - libaio
+     - libaio.i686
+     - compat-libstdc++-33
+     - ksh
+     - pam-devel
+     - pam-devel.i686
+     - file
+
+  - name: Add Groups for DB2
+    group:
+     name: "{{ item.name }}"
+     state: present
+     gid: "{{ item.gid }}"
+    with_items: "{{ group_list }}"
+
+  - name: Create Base Home Dir for DB2
+    file:
+     path: /db2home
+     state: directory
+     mode: 0777
+     owner: "root"
+     group: db2iadm
+
+  - name: Add Users for DB2
+    user:
+     name: "{{ item.name }}"
+     uid: "{{ item.uid }}"
+     home: "{{ item.home }}"
+     group: "{{ item.group }}"
+    with_items: "{{ user_list }}"
+
+  - name: Set users default password
+    shell: "echo '{{ default_user_pwd }}' | passwd --stdin {{ item.name }}"
+    with_items: "{{ user_list }}"
+
+  - name: Set users to non-expire
+    shell: "chage -E -1 -M -1 -d -1 {{ item.name }}"
+    with_items: "{{ user_list }}"
+
+  - name: Create volume group
+    lvg:
+      vg: datavg 
+      pvs: /dev/sdb
+    when: newdisk == true
+  
+  - name: Create logical volumes
+    lvol:
+      lv: "{{ item.name }}"
+      vg: "{{ item.vg }}"
+      size: "{{ item.size }}"
+    with_items: "{{ logical_volumes }}"
+    when: newdisk == true
+  
+  - name: Create Filesystems
+    filesystem:
+      fstype: "{{ item.fstype }}"
+      dev: "/dev/mapper/{{ item.vg }}-{{ item.name }}"
+    with_items: "{{ logical_volumes }}"
+    when: newdisk == true
+        
+  - name: Create Mounts
+    mount:
+      path: "{{ item.mount }}"
+      src: "/dev/mapper/{{ item.vg }}-{{ item.name }}"
+      fstype: "{{ item.fstype }}"
+      state: mounted
+    with_items: "{{ logical_volumes }}"
+    when: item.mount_after_install == false and newdisk == true
+  
+  - name: Create directories for DB2
+    file:
+     path: "{{ item.name }}"
+     state: directory
+     mode: "{{ item.perms }}"
+     owner: "{{ item.owner }}"
+     group: "{{ item.group }}"
+    with_items: "{{ filesystem_list }}"
+
+  - name: Get Installation Package for DB2
+    unarchive:
+      src: http://webhost/Linux_x86-64-10.5.7.tar.gz 
+      dest: /opt/IBM/Installation
+      remote_src: yes
+      creates: /opt/IBM/Installation/server_t
+
+  - name: Create Response file
+    template:
+      src: responsefile.j2
+      dest: "/opt/IBM/Installation/{{ appcode }}{{ envcode }}i.rsp"
+      owner: root
+      group: root
+
+  - name: Create INS file
+    template:
+      src: insfile.j2
+      dest: "/opt/IBM/Installation/{{ appcode }}{{ envcode }}i.INS"
+      owner: root
+      group: root
+
+  - name: Check if DB2 has been installed already
+    stat:
+     path: /opt/IBM/db2/V10.5_fp7
+    register: stat_result
+ 
+  - name: Install DB2
+    shell: " export DB2TMPDIR=/opt/IBM/Installation/tmp; cd /opt/IBM/Installation/server_t; ./db2setup -r /opt/IBM/Installation/{{ appcode }}{{ envcode }}i.rsp"
+    when: stat_result.stat.exists == false
+ 
+  - name: Place Licence file
+    copy:
+     src: db2ese_o.lic
+     dest: /opt/IBM/Installation/db2ese_o.lic
+
+  - name: Check if DB2 is licenced
+    stat:
+     path: /opt/IBM/db2/V10.5_fp7/properties/version/IBM_DB2_Enterprise_Server_Edition_OEM_Limited_Use-10.5.0.swtag
+    register: stat_result
+
+  - name: Licence DB2
+    shell: ". /db2home/{{ appcode }}{{ envcode }}i/sqllib/db2profile; db2licm -a /opt/IBM/Installation/db2ese_o.lic" 
+    when: stat_result.stat.exists == false
+
+  - name: Create Service Script
+    template:
+     src: db2server.j2
+     dest: /etc/systemd/system/db2server.service
+
+  - name: Start Systemd service
+    systemd:
+      state: started
+      enabled: true
+      name: db2server
+      daemon_reload: yes
+
+  - name: Setup CreateDB script
+    template:
+      src: create_db.j2
+      dest: "/db2home/{{ appcode }}{{ envcode }}i/create_db.sh"
+      owner: "{{ appcode }}{{ envcode }}i"
+      group: db2iadm
+      mode: 0755
+
+  - name: Run Create DB script
+    shell: "sudo -u {{ appcode }}{{ envcode }}i bash -c '. /db2home/{{ appcode }}{{ envcode }}i/.bash_profile && /db2home/{{ appcode }}{{ envcode }}i/create_db.sh'"

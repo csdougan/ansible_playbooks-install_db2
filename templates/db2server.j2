@@ -1,0 +1,12 @@
+[Unit]
+Description=DB2_Server_v10.5.7
+
+[Service]
+Type=forking
+ExecStart=/usr/bin/sudo -u {{ appcode }}{{ envcode }}i bash -c ". /db2home/{{ appcode }}{{ envcode }}i/.bash_profile && db2start"
+ExecStop=/usr/bin/sudo -u {{ appcode }}{{ envcode }}i bash -c ". /db2home/{{ appcode }}{{ envcode }}i/.bash_profile && db2stop"
+KillMode=process
+KillSignal=SIGHUP
+
+[Install]
+WantedBy=default.target

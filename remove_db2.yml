@@ -1,0 +1,117 @@
+---
+- name: Teardown DB2 install
+  hosts: all 
+  become: true
+  gather_facts: true
+  ##connection: local
+  vars:
+   appcode: mpsl
+   envid: x 
+   schemaid: l
+   envnum: 1
+   envcode: "{{ envid }}{{ envnum }}"
+   schemacode: "{{ schemaid }}{{ envnum }}"
+   logical_volumes:
+   - { name: 'datalv', size: '190G', vg: 'datavg', mount: '/db2data', fstype: 'xfs', mount_after_install: false }
+
+  tasks:
+   - name: Ensure psmisc is installed
+     yum:
+      name: psmisc
+      state: present
+   
+   - name: Drop DB2 database
+     shell: "db2 drop db {{ appcode|upper }}{{ envcode|upper }}D"
+     failed_when: false
+ 
+   - name: Call DB2 Stop
+     systemd:
+      name: db2server
+      state: stopped
+      enabled: false
+     ignore_errors: true
+
+   - name: Kill all DB2
+     shell: "killall -u {{ item }} -9"
+     failed_when: false
+     with_items: 
+      - "{{ appcode }}{{ envcode }}i"
+      - "{{ appcode }}{{ envcode }}f"
+      - "{{ appcode }}{{ envcode }}a"
+
+   - name: Remove systemd file
+     file:
+      name: /etc/systemd/system/db2server.service
+      state: absent
+
+   - name: Reload systemd
+     shell: "systemctl reset-failed; systemctl daemon-reload"
+  
+   - name: Remove users
+     user:
+      name: "{{ item }}"
+      state: absent
+     with_items:
+      - "{{ appcode }}{{ envcode }}i"
+      - "{{ appcode }}{{ envcode }}a"
+      - "{{ appcode }}{{ envcode }}f"
+      - "{{ appcode }}{{ schemaid }}ds{{ envnum }}"
+
+   - name: Remove Groups
+     group:
+       name: "{{ item }}"
+       state: absent
+     with_items:
+      - db2iadm
+      - db2ctrl
+      - db2maint
+      - db2mon
+      - db2admg
+      - db2feng
+      - "{{ appcode }}{{ schemacode }}rw"
+      - "{{ appcode }}{{ schemacode }}ro"
+
+
+   - name: Unmount db2data 
+     shell: "tac /etc/fstab | grep {{ item.vg }} | awk '{print $2}' | xargs umount"
+     failed_when: false
+     ##register: result
+     with_items: 
+      - "{{ logical_volumes }}" 
+
+
+   - name: update fstab
+     shell: "grep -v {{ item.vg }} /etc/fstab > /tmp/fstab; mv -f /tmp/fstab /etc/fstab"
+     failed_when: false
+     with_items: 
+      - "{{ logical_volumes }}" 
+     ##when: result.rc == 0
+
+     
+   - name: remove volume groups 
+     shell: "vgremove -y {{ item.vg }}"
+     failed_when: false
+     with_items: 
+      - "{{ logical_volumes }}" 
+
+   - name: remove physical volume 
+     shell: "pvremove /dev/sdb"
+     failed_when: false
+
+   - name: systemctl reset 
+     shell: "systemctl reset-failed;systemctl daemon-reload"
+     failed_when: false
+
+   - name: Remove DB2 related files
+     file:
+       name: "{{ item }}"
+       state: absent
+     with_items:
+      - /opt/IBM
+      - /db2home
+      - /db2export
+      - /var/db2
+      - /db2data
+
+   - name: Remove db2 entries from /etc/services
+     shell:  "grep -v {{ appcode }} /etc/services > /tmp/services; mv -f /tmp/services /etc/services"
